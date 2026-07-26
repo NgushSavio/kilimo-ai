@@ -12,15 +12,29 @@ import geocodeRouter from "./routes/geocode.js";
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Allow both localhost (for dev) and your deployed Vercel frontend domain
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.CLIENT_ORIGIN,
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.endsWith('.vercel.app'))) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Permissive CORS for public API demo
+      }
+    },
+    credentials: true,
   })
 );
+
 app.use(express.json());
 
-// Generous but present — protects the Claude API budget and Nominatim's
-// fair-use policy from accidental hammering during the demo.
+// Generous rate limit to protect API budget and Nominatim
 app.use(
   rateLimit({
     windowMs: 60_000,
@@ -30,18 +44,28 @@ app.use(
   })
 );
 
-app.get("/api/health", (_req, res) => res.json({ status: "ok", service: "kilimo-ai-backend" }));
+// Root Health Check Routes
+app.get("/", (_req, res) => {
+  res.json({ status: "ok", message: "Kilimo AI API Server is running!" });
+});
 
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", service: "kilimo-ai-backend" });
+});
+
+// API Routes
 app.use("/api/prices", pricesRouter);
 app.use("/api/markets", marketsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/geocode", geocodeRouter);
 
+// 404 Catch-All Handler
 app.use((req, res) => {
   res.status(404).json({ error: `No route for ${req.method} ${req.path}` });
 });
 
+// Unhandled Error Handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error("[unhandled error]", err);
@@ -49,5 +73,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Kilimo AI backend running on http://localhost:${PORT}`);
+  console.log(`Kilimo AI backend running on port ${PORT}`);
 });
